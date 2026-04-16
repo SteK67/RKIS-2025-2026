@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TodoApp.Commands;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
@@ -21,6 +22,17 @@ namespace TodoApp.Services
                 return UserTodos[CurrentProfile.Id];
             }
             return null;
+        }
+
+        public static TodoList RequireCurrentTodoList()
+        {
+            var todos = GetCurrentTodoList();
+            if (CurrentProfile == null || todos == null)
+            {
+                throw new AuthenticationException("Пользователь не авторизован.");
+            }
+
+            return todos;
         }
 
         public static void ClearUndoRedo()

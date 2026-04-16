@@ -1,4 +1,5 @@
 using System;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
 
@@ -6,7 +7,7 @@ namespace TodoApp.Commands
 {
 	public class DeleteCommand : IUndoableCommand
 	{
-		private int _index;
+		private readonly int _index;
 		private TodoItem _deletedItem;
 		private TodoList _todos;
 
@@ -17,8 +18,7 @@ namespace TodoApp.Commands
 
 		public void Execute()
 		{
-			_todos = AppInfo.GetCurrentTodoList();
-			if (_todos == null) return;
+			_todos = AppInfo.RequireCurrentTodoList();
 
 
 			_deletedItem = _todos[_index];
@@ -26,7 +26,7 @@ namespace TodoApp.Commands
 			if (_deletedItem == null)
 			{
 				Console.WriteLine($"Ошибка: задача с индексом {_index} не найдена.");
-				return;
+				throw new TaskNotFoundException($"Задача с индексом {_index} не существует.");
 			}
 
 			_todos.Delete(_index);
@@ -37,8 +37,8 @@ namespace TodoApp.Commands
 
 		public void Unexecute()
 		{
-			_todos = AppInfo.GetCurrentTodoList();
-			if (_todos == null || _deletedItem == null) return;
+			_todos = AppInfo.RequireCurrentTodoList();
+			if (_deletedItem == null) return;
 
 			_todos.Add(_deletedItem);
 			// Событие OnTodoAdded будет вызвано автоматически в TodoList.Add()

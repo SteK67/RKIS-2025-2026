@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
 
@@ -20,12 +21,16 @@ namespace TodoApp.Commands
 
         public void Execute()
         {
-            _todos = AppInfo.GetCurrentTodoList();
-            if (_todos == null) return;
+            _todos = AppInfo.RequireCurrentTodoList();
 
             if (_isMultiline)
             {
                 _text = ReadMultilineInput();
+            }
+
+            if (string.IsNullOrWhiteSpace(_text))
+            {
+                throw new InvalidArgumentException("Текст задачи не может быть пустым.");
             }
 
             _addedItem = new TodoItem(_text);
@@ -37,8 +42,8 @@ namespace TodoApp.Commands
 
         public void Unexecute()
         {
-            _todos = AppInfo.GetCurrentTodoList();
-            if (_todos == null || _addedItem == null) return;
+            _todos = AppInfo.RequireCurrentTodoList();
+            if (_addedItem == null) return;
 
             // Remove the last added item
             var items = _todos.GetAll();

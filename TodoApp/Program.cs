@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using TodoApp.Commands;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
 
@@ -54,10 +55,18 @@ namespace TodoApp
             }
 
             Console.Write("Логин: ");
-            string login = Console.ReadLine() ?? "";
+            string login = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(login))
+            {
+                throw new InvalidArgumentException("Логин не может быть пустым.");
+            }
 
             Console.Write("Пароль: ");
-            string password = Console.ReadLine() ?? "";
+            string password = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidArgumentException("Пароль не может быть пустым.");
+            }
 
             var profile = FileManager.LoadProfile(login, password);
 
@@ -90,28 +99,49 @@ namespace TodoApp
         private static bool CreateProfile()
         {
             Console.Write("Логин: ");
-            string login = Console.ReadLine() ?? "";
+            string login = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(login))
+            {
+                throw new InvalidArgumentException("Логин не может быть пустым.");
+            }
 
             if (AppInfo.Profiles.Any(p => p.Login == login))
             {
                 Console.WriteLine("Этот логин уже занят.");
-                return false;
+                throw new DuplicateLoginException("Этот логин уже занят.");
             }
 
             Console.Write("Пароль: ");
-            string password = Console.ReadLine() ?? "";
+            string password = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidArgumentException("Пароль не может быть пустым.");
+            }
 
             Console.Write("Имя: ");
-            string firstName = Console.ReadLine() ?? "";
+            string firstName = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(firstName))
+            {
+                throw new InvalidArgumentException("Имя не может быть пустым.");
+            }
 
             Console.Write("Фамилия: ");
-            string lastName = Console.ReadLine() ?? "";
+            string lastName = (Console.ReadLine() ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(lastName))
+            {
+                throw new InvalidArgumentException("Фамилия не может быть пустой.");
+            }
 
             Console.Write("Год рождения: ");
             if (!int.TryParse(Console.ReadLine(), out int birthYear))
             {
                 Console.WriteLine("Неверный формат года.");
-                return false;
+                throw new InvalidArgumentException("Неверный формат года рождения.");
+            }
+
+            if (birthYear < 1900 || birthYear > DateTime.Now.Year)
+            {
+                throw new InvalidArgumentException("Год рождения вне допустимого диапазона.");
             }
 
             var profile = new Profile(login, password, firstName, lastName, birthYear);
@@ -145,10 +175,38 @@ namespace TodoApp
             {
 				if (AppInfo.CurrentProfile is null)
 				{
-					if (!SelectOrCreateProfile())
-					{
-						return;
-					}
+                    try
+                    {
+						if (!SelectOrCreateProfile())
+						{
+							return;
+						}
+                    }
+                    catch (AuthenticationException ex)
+                    {
+                        Console.WriteLine($"Ошибка авторизации: {ex.Message}");
+                        continue;
+                    }
+                    catch (InvalidArgumentException ex)
+                    {
+                        Console.WriteLine($"Ошибка аргумента: {ex.Message}");
+                        continue;
+                    }
+                    catch (ProfileNotFoundException ex)
+                    {
+                        Console.WriteLine($"Ошибка профиля: {ex.Message}");
+                        continue;
+                    }
+                    catch (DuplicateLoginException ex)
+                    {
+                        Console.WriteLine($"Ошибка профиля: {ex.Message}");
+                        continue;
+                    }
+                    catch (Exception)
+                    {
+                        Console.WriteLine("Неожиданная ошибка.");
+                        continue;
+                    }
 
 					Console.WriteLine($"\nДобро пожаловать, {AppInfo.CurrentProfile?.FirstName}!\n");
 				}
@@ -162,13 +220,44 @@ namespace TodoApp
                     break;
                 }
 
-                ICommand command = CommandParser.Parse(input);
-                command.Execute();
-
-                if (command is IUndoableCommand undoableCmd)
+                try
                 {
-                    AppInfo.UndoStack.Push(undoableCmd);
-                    AppInfo.RedoStack.Clear();
+                    ICommand command = CommandParser.Parse(input);
+                    command.Execute();
+
+                    if (command is IUndoableCommand undoableCmd)
+                    {
+                        AppInfo.UndoStack.Push(undoableCmd);
+                        AppInfo.RedoStack.Clear();
+                    }
+                }
+                catch (TaskNotFoundException ex)
+                {
+                    Console.WriteLine($"Ошибка задачи: {ex.Message}");
+                }
+                catch (AuthenticationException ex)
+                {
+                    Console.WriteLine($"Ошибка авторизации: {ex.Message}");
+                }
+                catch (InvalidCommandException ex)
+                {
+                    Console.WriteLine($"Ошибка команды: {ex.Message}");
+                }
+                catch (InvalidArgumentException ex)
+                {
+                    Console.WriteLine($"Ошибка аргумента: {ex.Message}");
+                }
+                catch (ProfileNotFoundException ex)
+                {
+                    Console.WriteLine($"Ошибка профиля: {ex.Message}");
+                }
+                catch (DuplicateLoginException ex)
+                {
+                    Console.WriteLine($"Ошибка профиля: {ex.Message}");
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine("Неожиданная ошибка.");
                 }
             }
         }

@@ -1,4 +1,5 @@
 using System;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
 
@@ -6,8 +7,8 @@ namespace TodoApp.Commands
 {
 	public class StatusCommand : IUndoableCommand
 	{
-		private int _index;
-		private TodoStatus _newStatus;
+		private readonly int _index;
+		private readonly TodoStatus _newStatus;
 		private TodoStatus _oldStatus;
 		private TodoList _todos;
 
@@ -19,8 +20,7 @@ namespace TodoApp.Commands
 
 		public void Execute()
 		{
-			_todos = AppInfo.GetCurrentTodoList();
-			if (_todos == null) return;
+			_todos = AppInfo.RequireCurrentTodoList();
 
 
 			var item = _todos[_index];
@@ -28,7 +28,7 @@ namespace TodoApp.Commands
 			if (item == null)
 			{
 				Console.WriteLine($"Ошибка: задача с индексом {_index} не найдена.");
-				return;
+				throw new TaskNotFoundException($"Задача с индексом {_index} не существует.");
 			}
 
 			_oldStatus = item.Status;
@@ -40,8 +40,7 @@ namespace TodoApp.Commands
 
 		public void Unexecute()
 		{
-			_todos = AppInfo.GetCurrentTodoList();
-			if (_todos == null) return;
+			_todos = AppInfo.RequireCurrentTodoList();
 
 
 			_todos.SetStatus(_index, _oldStatus);

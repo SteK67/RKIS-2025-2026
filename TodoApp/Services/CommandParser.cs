@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
 using TodoApp.Commands;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
@@ -22,14 +23,14 @@ namespace TodoApp.Services
             _commandHandlers = new Dictionary<string, Func<string, ICommand>>
             {
                 ["help"] = _ => new HelpCommand(),
-                ["profile"] = args => ParseProfileCommand(SplitCommand(args)),
-                ["add"] = args => ParseAddCommand(SplitCommand(args)),
-                ["view"] = args => ParseViewCommand(SplitCommand(args)),
-                ["read"] = args => ParseReadCommand(SplitCommand(args)),
-                ["status"] = args => ParseStatusCommand(SplitCommand(args)),
-                ["update"] = args => ParseUpdateCommand(SplitCommand(args)),
-                ["delete"] = args => ParseDeleteCommand(SplitCommand(args)),
-                ["search"] = args => ParseSearchCommand(args),
+                ["profile"] = args => ParseProfileCommandSafe(SplitCommand(args)),
+                ["add"] = args => ParseAddCommandSafe(SplitCommand(args)),
+                ["view"] = args => ParseViewCommandSafe(SplitCommand(args)),
+                ["read"] = args => ParseReadCommandSafe(SplitCommand(args)),
+                ["status"] = args => ParseStatusCommandSafe(SplitCommand(args)),
+                ["update"] = args => ParseUpdateCommandSafe(SplitCommand(args)),
+                ["delete"] = args => ParseDeleteCommandSafe(SplitCommand(args)),
+                ["search"] = args => ParseSearchCommandSafe(args),
                 ["undo"] = _ => new UndoCommand(),
                 ["redo"] = _ => new RedoCommand(),
             };
@@ -60,12 +61,12 @@ namespace TodoApp.Services
                 catch
                 {
                     Console.WriteLine($"Ошибка при выполнении команды '{command}'");
-                    return new HelpCommand();
+                    throw;
                 }
             }
 
             Console.WriteLine($"Неизвестная команда: '{command}'. Введите 'help' для справки.");
-            return new HelpCommand();
+            throw new InvalidCommandException($"Неизвестная команда: '{command}'.");
         }
 
         private static ICommand ParseProfileCommand(string[] args)
@@ -180,6 +181,71 @@ namespace TodoApp.Services
                 .Trim();
 
             return Enum.TryParse(normalized, ignoreCase: true, out status);
+        }
+
+        private static ICommand ParseProfileCommandSafe(string[] args) => ParseProfileCommand(args);
+
+        private static ICommand ParseAddCommandSafe(string[] args)
+        {
+            bool isMultiline = args.Any(a => a == "-m" || a == "--multiline");
+            if (isMultiline)
+            {
+                return new AddCommand("", true);
+            }
+
+            string text = string.Join(" ", args).Trim('"');
+            return new AddCommand(text, false);
+        }
+
+        private static ICommand ParseViewCommandSafe(string[] args) => ParseViewCommand(args);
+
+        private static ICommand ParseReadCommandSafe(string[] args)
+        {
+            if (args.Length == 0)
+                throw new InvalidArgumentException("Используйте: read <индекс>");
+            if (!int.TryParse(args[0], out int index) || index < 0)
+                throw new InvalidArgumentException("Индекс должен быть неотрицательным числом.");
+            return new ReadCommand(index);
+        }
+
+        private static ICommand ParseStatusCommandSafe(string[] args)
+        {
+            if (args.Length < 2)
+                throw new InvalidArgumentException("Используйте: status <индекс> <статус>");
+            if (!int.TryParse(args[0], out int index) || index < 0)
+                throw new InvalidArgumentException("Индекс должен быть неотрицательным числом.");
+            if (TryParseStatus(args[1], out var status))
+                return new StatusCommand(index, status);
+
+            throw new InvalidArgumentException("Неизвестный статус. Доступные: NotStarted, InProgress, Completed, Postponed, Failed");
+        }
+
+        private static ICommand ParseUpdateCommandSafe(string[] args)
+        {
+            if (args.Length < 2)
+                throw new InvalidArgumentException("Используйте: update <индекс> \"новый текст\"");
+            if (!int.TryParse(args[0], out int index) || index < 0)
+                throw new InvalidArgumentException("Индекс должен быть неотрицательным числом.");
+
+            string newText = string.Join(" ", args.Skip(1)).Trim('"');
+            if (string.IsNullOrWhiteSpace(newText))
+                throw new InvalidArgumentException("Новый текст задачи не может быть пустым.");
+
+            return new UpdateCommand(index, newText);
+        }
+
+        private static ICommand ParseDeleteCommandSafe(string[] args)
+        {
+            if (args.Length == 0)
+                throw new InvalidArgumentException("Используйте: delete <индекс>");
+            if (!int.TryParse(args[0], out int index) || index < 0)
+                throw new InvalidArgumentException("Индекс должен быть неотрицательным числом.");
+            return new DeleteCommand(index);
+        }
+
+        private static ICommand ParseSearchCommandSafe(string rawArgs)
+        {
+            return SearchCommand.CreateOrThrow(rawArgs);
         }
 
         private static string[] SplitCommand(string input)

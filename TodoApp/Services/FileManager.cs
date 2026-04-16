@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 
 namespace TodoApp.Services
@@ -40,7 +41,13 @@ namespace TodoApp.Services
         public static Profile LoadProfile(string login, string password)
         {
             var profiles = LoadAllProfiles();
-            return profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
+            var profile = profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
+            if (profile == null)
+            {
+                throw new ProfileNotFoundException("Профиль с такими данными не найден.");
+            }
+
+            return profile;
         }
 
         public static List<Profile> LoadAllProfiles()
@@ -64,14 +71,19 @@ namespace TodoApp.Services
                 var parts = line.Split(';');
                 if (parts.Length == 6)
                 {
+                    if (!Guid.TryParse(parts[0], out var profileId))
+                        continue;
+                    if (!int.TryParse(parts[5], out var birthYear))
+                        continue;
+
                     var profile = new Profile
                     {
-                        Id = Guid.Parse(parts[0]),
+                        Id = profileId,
                         Login = parts[1],
                         Password = parts[2],
                         FirstName = parts[3],
                         LastName = parts[4],
-                        BirthYear = int.Parse(parts[5])
+                        BirthYear = birthYear
                     };
                     profiles.Add(profile);
                 }

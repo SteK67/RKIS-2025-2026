@@ -1,12 +1,12 @@
 using System;
-using TodoApp.Models;
+using TodoApp.Exceptions;
 using TodoApp.Services;
 
 namespace TodoApp.Commands
 {
 	public class ReadCommand : ICommand
 	{
-		private int _index;
+		private readonly int _index;
 
 		public ReadCommand(int index)
 		{
@@ -15,15 +15,14 @@ namespace TodoApp.Commands
 
 		public void Execute()
 		{
-			var todos = AppInfo.GetCurrentTodoList();
-			if (todos == null) return;
+			var todos = AppInfo.RequireCurrentTodoList();
 
 			var item = todos[_index];
 
 			if (item == null)
 			{
 				Console.WriteLine($"Ошибка: задача с индексом {_index} не найдена.");
-				return;
+				throw new TaskNotFoundException($"Задача с индексом {_index} не существует.");
 			}
 
 			Console.WriteLine(item.GetFullInfo());

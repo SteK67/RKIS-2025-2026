@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
 
@@ -147,10 +148,83 @@ namespace TodoApp.Commands
             return true;
         }
 
+        public static ICommand CreateOrThrow(string rawArgs)
+        {
+            var args = SplitArguments(rawArgs);
+
+            string? contains = null;
+            string? startsWith = null;
+            string? endsWith = null;
+            DateTime? from = null;
+            DateTime? to = null;
+            TodoStatus? status = null;
+            string? sortBy = null;
+            bool desc = false;
+            int? top = null;
+
+            for (int i = 0; i < args.Count; i++)
+            {
+                switch (args[i].ToLowerInvariant())
+                {
+                    case "--contains":
+                        if (!TryReadValue(args, ref i, out contains))
+                            throw new InvalidArgumentException("Используйте: search --contains <text>");
+                        break;
+                    case "--starts-with":
+                        if (!TryReadValue(args, ref i, out startsWith))
+                            throw new InvalidArgumentException("Используйте: search --starts-with <text>");
+                        break;
+                    case "--ends-with":
+                        if (!TryReadValue(args, ref i, out endsWith))
+                            throw new InvalidArgumentException("Используйте: search --ends-with <text>");
+                        break;
+                    case "--from":
+                        if (!TryReadDate(args, ref i, out from))
+                            throw new InvalidArgumentException("Некорректная дата. Используйте формат yyyy-MM-dd");
+                        break;
+                    case "--to":
+                        if (!TryReadDate(args, ref i, out to))
+                            throw new InvalidArgumentException("Некорректная дата. Используйте формат yyyy-MM-dd");
+                        break;
+                    case "--status":
+                        if (!TryReadValue(args, ref i, out var statusValue))
+                            throw new InvalidArgumentException("Используйте: search --status <status>");
+                        if (!CommandParser.TryParseStatus(statusValue, out var parsedStatus))
+                            throw new InvalidArgumentException("Некорректный статус");
+                        status = parsedStatus;
+                        break;
+                    case "--sort":
+                        if (!TryReadValue(args, ref i, out sortBy))
+                            throw new InvalidArgumentException("Используйте: search --sort text|date");
+                        sortBy = sortBy.ToLowerInvariant();
+                        if (sortBy != "text" && sortBy != "date")
+                            throw new InvalidArgumentException("Сортировка должна быть text или date");
+                        break;
+                    case "--desc":
+                        desc = true;
+                        break;
+                    case "--top":
+                        if (!TryReadValue(args, ref i, out var topValue) || !int.TryParse(topValue, out var parsedTop) || parsedTop <= 0)
+                            throw new InvalidArgumentException("Параметр top должен быть положительным числом");
+                        top = parsedTop;
+                        break;
+                    default:
+                        throw new InvalidCommandException($"Неизвестный параметр: {args[i]}");
+                }
+            }
+
+            return new SearchCommand(contains, startsWith, endsWith, from, to, status, sortBy, desc, top);
+        }
+
         public void Execute()
         {
             var todos = CommandParser.Todos;
-            if (todos == null || todos.Count == 0)
+            if (todos == null)
+            {
+                throw new AuthenticationException("Пользователь не авторизован.");
+            }
+
+            if (todos.Count == 0)
             {
                 Console.WriteLine("Ничего не найдено");
                 return;
