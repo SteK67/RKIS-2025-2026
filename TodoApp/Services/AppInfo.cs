@@ -14,6 +14,8 @@ namespace TodoApp.Services
         public static Dictionary<Guid, TodoList> UserTodos { get; set; } = new();
         public static Stack<IUndoableCommand> UndoStack { get; set; } = new();
         public static Stack<IUndoableCommand> RedoStack { get; set; } = new();
+        public static IDataStorage? Storage { get; set; }
+        public static Action<Guid, TodoList>? TodoListBinder { get; set; }
 
         public static TodoList GetCurrentTodoList()
         {
@@ -39,6 +41,18 @@ namespace TodoApp.Services
         {
             UndoStack.Clear();
             RedoStack.Clear();
+        }
+
+        public static void SetCurrentTodoList(Guid userId, IEnumerable<TodoItem> todos)
+        {
+            var todoList = new TodoList();
+            foreach (var todo in todos)
+            {
+                todoList.Add(todo);
+            }
+
+            UserTodos[userId] = todoList;
+            TodoListBinder?.Invoke(userId, todoList);
         }
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using TodoApp.Commands;
@@ -12,12 +12,14 @@ namespace TodoApp
     {
         private static IDataStorage _storage = null!;
 
-		static void Main()
+        static void Main()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
             _storage = new FileManager("data");
+            AppInfo.Storage = _storage;
+            AppInfo.TodoListBinder = SubscribeToTodoEvents;
 
             var profiles = _storage.LoadProfiles().ToList();
             if (profiles.Count == 0)
@@ -57,14 +59,13 @@ namespace TodoApp
                 {
                     return LoginProfile();
                 }
-                else if (choice == "n")
+
+                if (choice == "n")
                 {
                     return CreateProfile();
                 }
-                else
-                {
-                    Console.WriteLine("Пожалуйста, введите 'y' или 'n'");
-                }
+
+                Console.WriteLine("Пожалуйста, введите 'y' или 'n'");
             }
         }
 
@@ -77,14 +78,14 @@ namespace TodoApp
             }
 
             Console.Write("Логин: ");
-            string login = (Console.ReadLine() ?? "").Trim();
+            string login = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(login))
             {
                 throw new InvalidArgumentException("Логин не может быть пустым.");
             }
 
             Console.Write("Пароль: ");
-            string password = (Console.ReadLine() ?? "").Trim();
+            string password = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(password))
             {
                 throw new InvalidArgumentException("Пароль не может быть пустым.");
@@ -96,31 +97,16 @@ namespace TodoApp
                 throw new ProfileNotFoundException("Профиль с такими данными не найден.");
             }
 
-            if (profile != null)
-            {
-                AppInfo.CurrentProfile = profile;
-
-                var todoList = new TodoList();
-                foreach (var todo in _storage.LoadTodos(profile.Id))
-                {
-                    todoList.Add(todo);
-                }
-
-                AppInfo.UserTodos[profile.Id] = todoList;
-                SubscribeToTodoEvents(profile.Id, todoList);
-
-				AppInfo.ClearUndoRedo();
-                return true;
-            }
-
-            Console.WriteLine("Неверный логин или пароль.");
-            return LoginProfile();
+            AppInfo.CurrentProfile = profile;
+            AppInfo.SetCurrentTodoList(profile.Id, _storage.LoadTodos(profile.Id));
+            AppInfo.ClearUndoRedo();
+            return true;
         }
 
         private static bool CreateProfile()
         {
             Console.Write("Логин: ");
-            string login = (Console.ReadLine() ?? "").Trim();
+            string login = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(login))
             {
                 throw new InvalidArgumentException("Логин не может быть пустым.");
@@ -128,26 +114,25 @@ namespace TodoApp
 
             if (AppInfo.Profiles.Any(p => p.Login == login))
             {
-                Console.WriteLine("Этот логин уже занят.");
                 throw new DuplicateLoginException("Этот логин уже занят.");
             }
 
             Console.Write("Пароль: ");
-            string password = (Console.ReadLine() ?? "").Trim();
+            string password = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(password))
             {
                 throw new InvalidArgumentException("Пароль не может быть пустым.");
             }
 
             Console.Write("Имя: ");
-            string firstName = (Console.ReadLine() ?? "").Trim();
+            string firstName = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(firstName))
             {
                 throw new InvalidArgumentException("Имя не может быть пустым.");
             }
 
             Console.Write("Фамилия: ");
-            string lastName = (Console.ReadLine() ?? "").Trim();
+            string lastName = (Console.ReadLine() ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(lastName))
             {
                 throw new InvalidArgumentException("Фамилия не может быть пустой.");
@@ -156,7 +141,6 @@ namespace TodoApp
             Console.Write("Год рождения: ");
             if (!int.TryParse(Console.ReadLine(), out int birthYear))
             {
-                Console.WriteLine("Неверный формат года.");
                 throw new InvalidArgumentException("Неверный формат года рождения.");
             }
 
@@ -170,14 +154,9 @@ namespace TodoApp
             _storage.SaveProfiles(AppInfo.Profiles);
 
             AppInfo.CurrentProfile = profile;
-            AppInfo.UserTodos[profile.Id] = new TodoList();
-
+            AppInfo.SetCurrentTodoList(profile.Id, Array.Empty<TodoItem>());
             _storage.SaveTodos(profile.Id, AppInfo.UserTodos[profile.Id].GetAll());
-
-            var todoList = AppInfo.UserTodos[profile.Id];
-            SubscribeToTodoEvents(profile.Id, todoList);
-
-			AppInfo.ClearUndoRedo();
+            AppInfo.ClearUndoRedo();
             return true;
         }
 
@@ -187,25 +166,25 @@ namespace TodoApp
             todoList.OnTodoDeleted += _ => SaveCurrentTodos(profileId, todoList);
             todoList.OnTodoUpdated += _ => SaveCurrentTodos(profileId, todoList);
             todoList.OnStatusChanged += _ => SaveCurrentTodos(profileId, todoList);
-		}
+        }
 
         private static void SaveCurrentTodos(Guid profileId, TodoList todoList)
         {
             _storage.SaveTodos(profileId, todoList.GetAll());
         }
 
-		private static void MainLoop()
+        private static void MainLoop()
         {
             while (true)
             {
-				if (AppInfo.CurrentProfile is null)
-				{
+                if (AppInfo.CurrentProfile is null)
+                {
                     try
                     {
-						if (!SelectOrCreateProfile())
-						{
-							return;
-						}
+                        if (!SelectOrCreateProfile())
+                        {
+                            return;
+                        }
                     }
                     catch (AuthenticationException ex)
                     {
@@ -248,18 +227,18 @@ namespace TodoApp
                         continue;
                     }
 
-					Console.WriteLine($"\nДобро пожаловать, {AppInfo.CurrentProfile?.FirstName}!\n");
-				}
+                    Console.WriteLine($"\nДобро пожаловать, {AppInfo.CurrentProfile?.FirstName}!\n");
+                }
 
-				Console.Write("> ");
-                string input = Console.ReadLine() ?? "";
+                Console.Write("> ");
+                string input = Console.ReadLine() ?? string.Empty;
 
                 if (string.IsNullOrWhiteSpace(input))
                 {
                     continue;
                 }
 
-                if (input.ToLower() == "exit")
+                if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
                 {
                     Console.WriteLine("До свидания!");
                     break;
