@@ -10,14 +10,36 @@ namespace TodoApp
 {
     class Program
     {
+        private static IDataStorage _storage = null!;
+
 		static void Main()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
-            FileManager.EnsureDataDirectory();
+            _storage = new FileManager("data");
 
-            AppInfo.Profiles = FileManager.LoadAllProfiles();
+            var profiles = _storage.LoadProfiles().ToList();
+            if (profiles.Count == 0)
+            {
+                var legacyProfiles = LegacyFileManager.LoadAllProfiles();
+                if (legacyProfiles.Count > 0)
+                {
+                    _storage.SaveProfiles(legacyProfiles);
+                    foreach (var profile in legacyProfiles)
+                    {
+                        string legacyTodoPath = LegacyFileManager.GetTodoFilePath(profile.Id);
+                        if (File.Exists(legacyTodoPath))
+                        {
+                            _storage.SaveTodos(profile.Id, LegacyFileManager.LoadTodos(legacyTodoPath).GetAll());
+                        }
+                    }
+
+                    profiles = _storage.LoadProfiles().ToList();
+                }
+            }
+
+            AppInfo.Profiles = profiles;
 
             MainLoop();
         }
@@ -68,25 +90,24 @@ namespace TodoApp
                 throw new InvalidArgumentException("Пароль не может быть пустым.");
             }
 
-            var profile = FileManager.LoadProfile(login, password);
+            var profile = AppInfo.Profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
+            if (profile == null)
+            {
+                throw new ProfileNotFoundException("Профиль с такими данными не найден.");
+            }
 
             if (profile != null)
             {
                 AppInfo.CurrentProfile = profile;
 
-                string todoPath = FileManager.GetTodoFilePath(profile.Id);
-                if (File.Exists(todoPath))
+                var todoList = new TodoList();
+                foreach (var todo in _storage.LoadTodos(profile.Id))
                 {
-                    AppInfo.UserTodos[profile.Id] = FileManager.LoadTodos(todoPath);
-                }
-                else
-                {
-                    AppInfo.UserTodos[profile.Id] = new TodoList();
-                    FileManager.SaveTodos(AppInfo.UserTodos[profile.Id], todoPath);
+                    todoList.Add(todo);
                 }
 
-                var todoList = AppInfo.UserTodos[profile.Id];
-                SubscribeToTodoEvents(todoList);
+                AppInfo.UserTodos[profile.Id] = todoList;
+                SubscribeToTodoEvents(profile.Id, todoList);
 
 				AppInfo.ClearUndoRedo();
                 return true;
@@ -146,28 +167,32 @@ namespace TodoApp
 
             var profile = new Profile(login, password, firstName, lastName, birthYear);
             AppInfo.Profiles.Add(profile);
-            FileManager.SaveProfile(profile);
+            _storage.SaveProfiles(AppInfo.Profiles);
 
             AppInfo.CurrentProfile = profile;
             AppInfo.UserTodos[profile.Id] = new TodoList();
 
-            string todoPath = FileManager.GetTodoFilePath(profile.Id);
-            FileManager.SaveTodos(AppInfo.UserTodos[profile.Id], todoPath);
+            _storage.SaveTodos(profile.Id, AppInfo.UserTodos[profile.Id].GetAll());
 
             var todoList = AppInfo.UserTodos[profile.Id];
-            SubscribeToTodoEvents(todoList);
+            SubscribeToTodoEvents(profile.Id, todoList);
 
 			AppInfo.ClearUndoRedo();
             return true;
         }
 
-        private static void SubscribeToTodoEvents(TodoList todoList)
+        private static void SubscribeToTodoEvents(Guid profileId, TodoList todoList)
         {
-            todoList.OnTodoAdded += FileManager.SaveTodoList;
-            todoList.OnTodoDeleted += FileManager.SaveTodoList;
-            todoList.OnTodoUpdated += FileManager.SaveTodoList;
-            todoList.OnStatusChanged += FileManager.SaveTodoList;
+            todoList.OnTodoAdded += _ => SaveCurrentTodos(profileId, todoList);
+            todoList.OnTodoDeleted += _ => SaveCurrentTodos(profileId, todoList);
+            todoList.OnTodoUpdated += _ => SaveCurrentTodos(profileId, todoList);
+            todoList.OnStatusChanged += _ => SaveCurrentTodos(profileId, todoList);
 		}
+
+        private static void SaveCurrentTodos(Guid profileId, TodoList todoList)
+        {
+            _storage.SaveTodos(profileId, todoList.GetAll());
+        }
 
 		private static void MainLoop()
         {
@@ -202,6 +227,21 @@ namespace TodoApp
                         Console.WriteLine($"Ошибка профиля: {ex.Message}");
                         continue;
                     }
+                    catch (DataStorageException ex)
+                    {
+                        Console.WriteLine($"Ошибка хранилища: {ex.Message}");
+                        continue;
+                    }
+                    catch (DataDecryptionException ex)
+                    {
+                        Console.WriteLine($"Ошибка расшифровки: {ex.Message}");
+                        continue;
+                    }
+                    catch (CorruptedDataException ex)
+                    {
+                        Console.WriteLine($"Ошибка данных: {ex.Message}");
+                        continue;
+                    }
                     catch (Exception)
                     {
                         Console.WriteLine("Неожиданная ошибка.");
@@ -213,6 +253,11 @@ namespace TodoApp
 
 				Console.Write("> ");
                 string input = Console.ReadLine() ?? "";
+
+                if (string.IsNullOrWhiteSpace(input))
+                {
+                    continue;
+                }
 
                 if (input.ToLower() == "exit")
                 {
@@ -254,6 +299,18 @@ namespace TodoApp
                 catch (DuplicateLoginException ex)
                 {
                     Console.WriteLine($"Ошибка профиля: {ex.Message}");
+                }
+                catch (DataStorageException ex)
+                {
+                    Console.WriteLine($"Ошибка хранилища: {ex.Message}");
+                }
+                catch (DataDecryptionException ex)
+                {
+                    Console.WriteLine($"Ошибка расшифровки: {ex.Message}");
+                }
+                catch (CorruptedDataException ex)
+                {
+                    Console.WriteLine($"Ошибка данных: {ex.Message}");
                 }
                 catch (Exception)
                 {

@@ -8,7 +8,7 @@ using TodoApp.Models;
 
 namespace TodoApp.Services
 {
-    public static class FileManager
+    public static class LegacyFileManager
     {
         private const string DataDir = "data";
         private const string ProfilesFileName = "profiles.csv";
