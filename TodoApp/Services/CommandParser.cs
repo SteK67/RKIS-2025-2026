@@ -31,6 +31,7 @@ namespace TodoApp.Services
                 ["update"] = args => ParseUpdateCommandSafe(SplitCommand(args)),
                 ["delete"] = args => ParseDeleteCommandSafe(SplitCommand(args)),
                 ["search"] = args => ParseSearchCommandSafe(args),
+                ["load"] = args => ParseLoadCommandSafe(SplitCommand(args)),
                 ["undo"] = _ => new UndoCommand(),
                 ["redo"] = _ => new RedoCommand(),
             };
@@ -246,6 +247,11 @@ namespace TodoApp.Services
         private static ICommand ParseSearchCommandSafe(string rawArgs)
         {
             return SearchCommand.CreateOrThrow(rawArgs);
+        }
+
+        private static ICommand ParseLoadCommandSafe(string[] args)
+        {
+            return LoadCommand.Create(args);
         }
 
         private static string[] SplitCommand(string input)
