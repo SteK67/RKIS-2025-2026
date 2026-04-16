@@ -9,6 +9,7 @@ using TodoApp.Models;
 
 namespace TodoApp.Services
 {
+    [Obsolete("SQLite repositories are used for active data storage.")]
     public class FileManager : IDataStorage
     {
         private const string ProfilesFileName = "profiles.dat";

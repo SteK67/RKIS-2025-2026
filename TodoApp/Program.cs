@@ -1,7 +1,8 @@
 ﻿using System;
 using System.IO;
-using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using TodoApp.Commands;
+using TodoApp.Data;
 using TodoApp.Exceptions;
 using TodoApp.Models;
 using TodoApp.Services;
@@ -10,40 +11,72 @@ namespace TodoApp
 {
     class Program
     {
-        private static IDataStorage _storage = null!;
+        private static readonly IDataStorage _storage = new SqliteDataStorage();
+        private static readonly ProfileRepository _profileRepository = new ProfileRepository();
+        private static readonly TodoRepository _todoRepository = new TodoRepository();
 
         static void Main()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.Clear();
 
-            _storage = new FileManager("data");
+            using (var context = new AppDbContext())
+            {
+                context.Database.Migrate();
+            }
+
             AppInfo.Storage = _storage;
             AppInfo.TodoListBinder = SubscribeToTodoEvents;
 
-            var profiles = _storage.LoadProfiles().ToList();
-            if (profiles.Count == 0)
-            {
-                var legacyProfiles = LegacyFileManager.LoadAllProfiles();
-                if (legacyProfiles.Count > 0)
-                {
-                    _storage.SaveProfiles(legacyProfiles);
-                    foreach (var profile in legacyProfiles)
-                    {
-                        string legacyTodoPath = LegacyFileManager.GetTodoFilePath(profile.Id);
-                        if (File.Exists(legacyTodoPath))
-                        {
-                            _storage.SaveTodos(profile.Id, LegacyFileManager.LoadTodos(legacyTodoPath).GetAll());
-                        }
-                    }
-
-                    profiles = _storage.LoadProfiles().ToList();
-                }
-            }
-
-            AppInfo.Profiles = profiles;
+            MigrateExistingData();
+            AppInfo.Profiles = _profileRepository.GetAll();
 
             MainLoop();
+        }
+
+        private static void MigrateExistingData()
+        {
+            if (_profileRepository.GetAll().Count > 0)
+            {
+                return;
+            }
+
+            try
+            {
+#pragma warning disable CS0618
+                var encryptedStorage = new FileManager("data");
+#pragma warning restore CS0618
+                var encryptedProfiles = new System.Collections.Generic.List<Profile>(encryptedStorage.LoadProfiles());
+                if (encryptedProfiles.Count > 0)
+                {
+                    _storage.SaveProfiles(encryptedProfiles);
+                    foreach (var profile in encryptedProfiles)
+                    {
+                        _storage.SaveTodos(profile.Id, encryptedStorage.LoadTodos(profile.Id));
+                    }
+
+                    return;
+                }
+            }
+            catch
+            {
+            }
+
+            var legacyProfiles = LegacyFileManager.LoadAllProfiles();
+            if (legacyProfiles.Count == 0)
+            {
+                return;
+            }
+
+            _storage.SaveProfiles(legacyProfiles);
+            foreach (var profile in legacyProfiles)
+            {
+                string legacyTodoPath = LegacyFileManager.GetTodoFilePath(profile.Id);
+                if (File.Exists(legacyTodoPath))
+                {
+                    _storage.SaveTodos(profile.Id, LegacyFileManager.LoadTodos(legacyTodoPath).GetAll());
+                }
+            }
         }
 
         private static bool SelectOrCreateProfile()
@@ -71,6 +104,7 @@ namespace TodoApp
 
         private static bool LoginProfile()
         {
+            AppInfo.Profiles = _profileRepository.GetAll();
             if (AppInfo.Profiles.Count == 0)
             {
                 Console.WriteLine("Нет сохранённых профилей. Пожалуйста, создайте новый.");
@@ -91,14 +125,14 @@ namespace TodoApp
                 throw new InvalidArgumentException("Пароль не может быть пустым.");
             }
 
-            var profile = AppInfo.Profiles.FirstOrDefault(p => p.Login == login && p.Password == password);
+            var profile = _profileRepository.GetByCredentials(login, password);
             if (profile == null)
             {
                 throw new ProfileNotFoundException("Профиль с такими данными не найден.");
             }
 
             AppInfo.CurrentProfile = profile;
-            AppInfo.SetCurrentTodoList(profile.Id, _storage.LoadTodos(profile.Id));
+            AppInfo.SetCurrentTodoList(profile.Id, _todoRepository.GetAll(profile.Id));
             AppInfo.ClearUndoRedo();
             return true;
         }
@@ -112,7 +146,7 @@ namespace TodoApp
                 throw new InvalidArgumentException("Логин не может быть пустым.");
             }
 
-            if (AppInfo.Profiles.Any(p => p.Login == login))
+            if (_profileRepository.ExistsByLogin(login))
             {
                 throw new DuplicateLoginException("Этот логин уже занят.");
             }
@@ -150,12 +184,12 @@ namespace TodoApp
             }
 
             var profile = new Profile(login, password, firstName, lastName, birthYear);
-            AppInfo.Profiles.Add(profile);
-            _storage.SaveProfiles(AppInfo.Profiles);
+            _profileRepository.Add(profile);
 
+            AppInfo.Profiles = _profileRepository.GetAll();
             AppInfo.CurrentProfile = profile;
             AppInfo.SetCurrentTodoList(profile.Id, Array.Empty<TodoItem>());
-            _storage.SaveTodos(profile.Id, AppInfo.UserTodos[profile.Id].GetAll());
+            _todoRepository.ReplaceForProfile(profile.Id, Array.Empty<TodoItem>());
             AppInfo.ClearUndoRedo();
             return true;
         }
@@ -170,7 +204,7 @@ namespace TodoApp
 
         private static void SaveCurrentTodos(Guid profileId, TodoList todoList)
         {
-            _storage.SaveTodos(profileId, todoList.GetAll());
+            _todoRepository.ReplaceForProfile(profileId, todoList.GetAll());
         }
 
         private static void MainLoop()
@@ -299,3 +333,4 @@ namespace TodoApp
         }
     }
 }
+
