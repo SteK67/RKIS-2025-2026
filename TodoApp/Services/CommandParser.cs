@@ -9,7 +9,8 @@ namespace TodoApp.Services
 {
     public static class CommandParser
     {
-        private static Dictionary<string, Func<string[], ICommand>> _commandHandlers;
+        private static Dictionary<string, Func<string, ICommand>> _commandHandlers;
+        public static TodoList Todos => AppInfo.GetCurrentTodoList();
 
         static CommandParser()
         {
@@ -18,18 +19,19 @@ namespace TodoApp.Services
 
         private static void InitializeHandlers()
         {
-            _commandHandlers = new Dictionary<string, Func<string[], ICommand>>
+            _commandHandlers = new Dictionary<string, Func<string, ICommand>>
             {
-                ["help"] = args => new HelpCommand(),
-                ["profile"] = args => ParseProfileCommand(args),
-                ["add"] = args => ParseAddCommand(args),
-                ["view"] = args => ParseViewCommand(args),
-                ["read"] = args => ParseReadCommand(args),
-                ["status"] = args => ParseStatusCommand(args),
-                ["update"] = args => ParseUpdateCommand(args),
-                ["delete"] = args => ParseDeleteCommand(args),
-                ["undo"] = args => new UndoCommand(),
-                ["redo"] = args => new RedoCommand(),
+                ["help"] = _ => new HelpCommand(),
+                ["profile"] = args => ParseProfileCommand(SplitCommand(args)),
+                ["add"] = args => ParseAddCommand(SplitCommand(args)),
+                ["view"] = args => ParseViewCommand(SplitCommand(args)),
+                ["read"] = args => ParseReadCommand(SplitCommand(args)),
+                ["status"] = args => ParseStatusCommand(SplitCommand(args)),
+                ["update"] = args => ParseUpdateCommand(SplitCommand(args)),
+                ["delete"] = args => ParseDeleteCommand(SplitCommand(args)),
+                ["search"] = args => ParseSearchCommand(args),
+                ["undo"] = _ => new UndoCommand(),
+                ["redo"] = _ => new RedoCommand(),
             };
         }
 
@@ -45,7 +47,9 @@ namespace TodoApp.Services
                 return new HelpCommand();
 
             string command = parts[0].ToLower();
-            var args = parts.Skip(1).ToArray();
+            string args = inputString.Length > command.Length
+                ? inputString.Substring(command.Length).TrimStart()
+                : string.Empty;
 
             if (_commandHandlers.ContainsKey(command))
             {
@@ -123,8 +127,7 @@ namespace TodoApp.Services
                 return new HelpCommand();
             }
 
-            string statusStr = args[1].ToLower();
-            if (Enum.TryParse<TodoStatus>(statusStr, ignoreCase: true, out var status))
+            if (TryParseStatus(args[1], out var status))
             {
                 return new StatusCommand(index, status);
             }
@@ -160,6 +163,23 @@ namespace TodoApp.Services
             }
 
             return new DeleteCommand(index);
+        }
+
+        private static ICommand ParseSearchCommand(string rawArgs)
+        {
+            return SearchCommand.TryCreate(rawArgs, out var command)
+                ? command
+                : new HelpCommand();
+        }
+
+        public static bool TryParseStatus(string statusValue, out TodoStatus status)
+        {
+            string normalized = statusValue
+                .Replace("-", "", StringComparison.Ordinal)
+                .Replace("_", "", StringComparison.Ordinal)
+                .Trim();
+
+            return Enum.TryParse(normalized, ignoreCase: true, out status);
         }
 
         private static string[] SplitCommand(string input)
