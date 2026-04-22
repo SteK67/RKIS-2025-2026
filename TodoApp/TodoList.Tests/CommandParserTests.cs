@@ -6,8 +6,21 @@ using InvalidArgumentException = TodoApp.Exceptions.InvalidArgumentException;
 
 namespace TodoList.Tests
 {
-    public class CommandParserTests
+    public class CommandParserTests : IDisposable
     {
+        private readonly TextWriter _originalOutput;
+
+        public CommandParserTests()
+        {
+            _originalOutput = Console.Out;
+            Console.SetOut(TextWriter.Null);
+        }
+
+        public void Dispose()
+        {
+            Console.SetOut(_originalOutput);
+        }
+
         [Theory]
         [InlineData("help", typeof(HelpCommand))]
         [InlineData("profile", typeof(ProfileCommand))]

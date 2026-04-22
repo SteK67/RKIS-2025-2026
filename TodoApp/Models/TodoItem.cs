@@ -1,30 +1,62 @@
 using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using TodoApp.Services;
 
 namespace TodoApp.Models
 {
     public class TodoItem
     {
-        public string Text { get; private set; }
+        [Key]
+        public int Id { get; set; }
+
+        [Required]
+        [MaxLength(2000)]
+        public string Text { get; set; }
+
+        [Required]
         public TodoStatus Status { get; set; }
+
+        [Required]
         public DateTime LastUpdate { get; set; }
 
-        public TodoItem(string text)
+        [Required]
+        public Guid ProfileId { get; set; }
+
+        [ForeignKey(nameof(ProfileId))]
+        public Profile? Profile { get; set; }
+
+        [NotMapped]
+        private readonly IClock _clock;
+
+        public TodoItem()
+            : this(string.Empty, new SystemClock())
         {
+        }
+
+        public TodoItem(string text)
+            : this(text, new SystemClock())
+        {
+        }
+
+        public TodoItem(string text, IClock clock)
+        {
+            _clock = clock;
             Text = text;
             Status = TodoStatus.NotStarted;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         public void UpdateText(string newText)
         {
             Text = newText;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         public void SetStatus(TodoStatus status)
         {
             Status = status;
-            LastUpdate = DateTime.Now;
+            LastUpdate = _clock.Now;
         }
 
         public string GetShortInfo()
